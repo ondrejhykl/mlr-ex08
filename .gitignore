@@ -18,6 +18,7 @@ ENV/
 # Datasets (large image archives & extracted dataset folders)
 ex08_leaves_images/
 ex08_leaves_images.zip
+leafs_data_group2/
 *.zip
 *.tar
 *.tar.gz
