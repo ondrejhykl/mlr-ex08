@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Leaf Classifier Live - ONNX Runtime Web</title>
+  <!-- ONNX Runtime Web from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.js"></script>
+  <!-- Client-side in-browser QR Code Generator from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+  <style>
+    :root {
+      --primary: #1b5e20;
+      --primary-light: #4c8c4a;
+      --accent: #00e676;
+      --bg: #0d1b13;
+      --surface: #17281d;
+      --surface-light: #223b2c;
+      --text: #e8f5e9;
+      --text-muted: #a5d6a7;
+      --border: #2e593c;
+      --radius: 16px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+      padding-bottom: max(32px, env(safe-area-inset-bottom));
+    }
+
+    header {
+      width: 100%;
+      max-width: 520px;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    header h1 {
+      font-size: 1.55rem;
+      font-weight: 700;
+      color: #b9f6ca;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    header p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .main-card {
+      width: 100%;
+      max-width: 520px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Video & Viewfinder */
+    .viewport-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      max-height: 380px;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    video {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(1);
+    }
+
+    video.mirrored {
+      transform: scaleX(-1);
+    }
+
+    #image-preview {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      display: none;
+    }
+
+    /* Viewfinder square indicator */
+    .viewfinder-square {
+      position: absolute;
+      width: 80%;
+      aspect-ratio: 1 / 1;
+      border: 2px dashed rgba(0, 230, 118, 0.85);
+      border-radius: 8px;
+      pointer-events: none;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-end;
+      padding: 6px;
+    }
+
+    .viewfinder-label {
+      font-size: 0.68rem;
+      background: rgba(0, 0, 0, 0.7);
+      color: var(--accent);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .status-badge {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.75);
+      color: #e8f5e9;
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 20px;
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      z-index: 2;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #757575;
+    }
+
+    .status-dot.active {
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse 1.8s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .stats-badge {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.75);
+      color: #a5d6a7;
+      font-size: 0.72rem;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-family: monospace;
+      z-index: 2;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button, label.btn-upload {
+      flex: 1;
+      min-width: 120px;
+      background: var(--surface-light);
+      color: #e8f5e9;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+      text-align: center;
+      user-select: none;
+    }
+
+    button:hover, label.btn-upload:hover {
+      background: var(--primary);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    button:active, label.btn-upload:active {
+      transform: scale(0.98);
+    }
+
+    button.primary-btn {
+      background: var(--primary);
+      border-color: var(--primary-light);
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    /* Probabilities section */
+    .predictions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .predictions-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #c8e6c9;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .pred-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .pred-row.top-match {
+      background: rgba(0, 230, 118, 0.1);
+      border-color: rgba(0, 230, 118, 0.4);
+    }
+
+    .pred-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.88rem;
+    }
+
+    .pred-name {
+      font-weight: 600;
+      text-transform: capitalize;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pred-badge {
+      font-size: 0.65rem;
+      background: var(--accent);
+      color: #05240e;
+      font-weight: 800;
+      padding: 1px 6px;
+      border-radius: 4px;
+      display: none;
+    }
+
+    .pred-row.top-match .pred-badge {
+      display: inline-block;
+    }
+
+    .pred-pct {
+      font-family: "SF Mono", Consolas, monospace;
+      font-weight: 700;
+      color: #e8f5e9;
+    }
+
+    .pred-bar-bg {
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .pred-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--primary-light);
+      border-radius: 4px;
+      transition: width 0.15s ease-out, background-color 0.2s ease;
+    }
+
+    .pred-row.top-match .pred-bar-fill {
+      background: linear-gradient(90deg, #00c853, var(--accent));
+      box-shadow: 0 0 10px rgba(0, 230, 118, 0.5);
+    }
+
+    /* Verification Box */
+    .verification-box {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 0.8rem;
+    }
+
+    .verification-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #c8e6c9;
+    }
+
+    .verify-btn {
+      padding: 4px 10px;
+      font-size: 0.75rem;
+      min-width: auto;
+      background: var(--surface-light);
+    }
+
+    .verify-results {
+      font-family: monospace;
+      font-size: 0.75rem;
+      line-height: 1.5;
+      color: #a5d6a7;
+    }
+
+    .verify-pass {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* Footer & QR Section */
+    footer {
+      width: 100%;
+      max-width: 520px;
+      margin-top: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .qr-container {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .qr-box {
+      flex-shrink: 0;
+      width: 110px;
+      height: 110px;
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .qr-box svg, .qr-box canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+
+    .qr-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .qr-label {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #b9f6ca;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .qr-desc {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+
+    .qr-link {
+      font-size: 0.8rem;
+      color: var(--accent);
+      text-decoration: underline;
+      word-break: break-all;
+      font-weight: 600;
+      transition: color 0.2s ease;
+    }
+
+    .qr-link:hover {
+      color: #69f0ae;
+    }
+
+    /* Hidden processing canvas */
+    #offscreen-canvas {
+      display: none;
+    }
+
+    @media (max-width: 400px) {
+      .qr-container {
+        flex-direction: column;
+        text-align: center;
+      }
+      .qr-box {
+        margin: 0 auto;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🌿 Leaf Classifier Live</h1>
+    <p>MobileNetV3 ONNX Runtime Web • Rear Camera & Photo Fallback</p>
+  </header>
+
+  <main class="main-card">
+    <!-- Video / Image Preview Area -->
+    <div class="viewport-container" id="viewport">
+      <video id="video" playsinline webkit-playsinline autoplay muted></video>
+      <img id="image-preview" alt="Uploaded leaf preview">
+      
+      <!-- Viewfinder Overlay for Central Square Crop -->
+      <div class="viewfinder-square" id="viewfinder">
+        <span class="viewfinder-label">96×96 MODEL CROP</span>
+      </div>
+
+      <!-- Status Indicator -->
+      <div class="status-badge">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Loading model...</span>
+      </div>
+
+      <!-- Stats: Latency & FPS -->
+      <div class="stats-badge" id="stats-badge">-- ms | -- FPS</div>
+    </div>
+
+    <!-- Camera & Upload Controls -->
+    <div class="controls">
+      <button id="btn-camera" class="primary-btn" type="button">
+        <span id="btn-camera-icon">📷</span>
+        <span id="btn-camera-text">Start Camera</span>
+      </button>
+
+      <button id="btn-flip" type="button" style="display: none;">
+        🔄 Flip Camera
+      </button>
+
+      <label for="file-input" class="btn-upload">
+        📁 Upload Photo
+      </label>
+      <input type="file" id="file-input" accept="image/*">
+    </div>
+
+    <!-- Live Predictions List -->
+    <div class="predictions">
+      <div class="predictions-title">
+        <span>Class Probabilities</span>
+        <span id="top-prediction-name" style="font-size: 0.8rem; color: var(--accent);"></span>
+      </div>
+
+      <div id="class-list">
+        <!-- Generated dynamically for apple, cherry, chestnut, maple -->
+      </div>
+    </div>
+
+    <!-- Model & Expected Verification Box -->
+    <div class="verification-box">
+      <div class="verification-header">
+        <span>Verification vs check_expected.json</span>
+        <button id="btn-verify" class="verify-btn" type="button">Run Check</button>
+      </div>
+      <div class="verify-results" id="verify-output">
+        Click "Run Check" to test check_image.jpg against check_expected.json.
+      </div>
+    </div>
+  </main>
+
+  <!-- Clearly Labelled QR Code and Clickable Link -->
+  <footer>
+    <div class="qr-container">
+      <div class="qr-box" id="qrcode" title="Scan to open on your phone">
+        <!-- SVG generated client-side; fallback embedded SVG below -->
+        <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 62" preserveAspectRatio="xMinYMin meet">
+          <rect width="100%" height="100%" fill="white"/>
+          <path d="M2,2l2,0 0,2 -2,0 0,-2z M4,2l2,0 0,2 -2,0 0,-2z M6,2l2,0 0,2 -2,0 0,-2z M8,2l2,0 0,2 -2,0 0,-2z M10,2l2,0 0,2 -2,0 0,-2z M12,2l2,0 0,2 -2,0 0,-2z M14,2l2,0 0,2 -2,0 0,-2z M18,2l2,0 0,2 -2,0 0,-2z M22,2l2,0 0,2 -2,0 0,-2z M24,2l2,0 0,2 -2,0 0,-2z M26,2l2,0 0,2 -2,0 0,-2z M34,2l2,0 0,2 -2,0 0,-2z M38,2l2,0 0,2 -2,0 0,-2z M46,2l2,0 0,2 -2,0 0,-2z M48,2l2,0 0,2 -2,0 0,-2z M50,2l2,0 0,2 -2,0 0,-2z M52,2l2,0 0,2 -2,0 0,-2z M54,2l2,0 0,2 -2,0 0,-2z M56,2l2,0 0,2 -2,0 0,-2z M58,2l2,0 0,2 -2,0 0,-2z M2,4l2,0 0,2 -2,0 0,-2z M14,4l2,0 0,2 -2,0 0,-2z M20,4l2,0 0,2 -2,0 0,-2z M46,4l2,0 0,2 -2,0 0,-2z M58,4l2,0 0,2 -2,0 0,-2z M2,6l2,0 0,2 -2,0 0,-2z M6,6l2,0 0,2 -2,0 0,-2z M8,6l2,0 0,2 -2,0 0,-2z M10,6l2,0 0,2 -2,0 0,-2z M14,6l2,0 0,2 -2,0 0,-2z M18,6l2,0 0,2 -2,0 0,-2z M20,6l2,0 0,2 -2,0 0,-2z M22,6l2,0 0,2 -2,0 0,-2z M24,6l2,0 0,2 -2,0 0,-2z M28,6l2,0 0,2 -2,0 0,-2z M30,6l2,0 0,2 -2,0 0,-2z M32,6l2,0 0,2 -2,0 0,-2z M34,6l2,0 0,2 -2,0 0,-2z M36,6l2,0 0,2 -2,0 0,-2z M38,6l2,0 0,2 -2,0 0,-2z M40,6l2,0 0,2 -2,0 0,-2z M46,6l2,0 0,2 -2,0 0,-2z M50,6l2,0 0,2 -2,0 0,-2z M52,6l2,0 0,2 -2,0 0,-2z M54,6l2,0 0,2 -2,0 0,-2z M58,6l2,0 0,2 -2,0 0,-2z M2,8l2,0 0,2 -2,0 0,-2z M6,8l2,0 0,2 -2,0 0,-2z M8,8l2,0 0,2 -2,0 0,-2z M10,8l2,0 0,2 -2,0 0,-2z M14,8l2,0 0,2 -2,0 0,-2z M20,8l2,0 0,2 -2,0 0,-2z M26,8l2,0 0,2 -2,0 0,-2z M28,8l2,0 0,2 -2,0 0,-2z M34,8l2,0 0,2 -2,0 0,-2z M36,8l2,0 0,2 -2,0 0,-2z M38,8l2,0 0,2 -2,0 0,-2z M42,8l2,0 0,2 -2,0 0,-2z M46,8l2,0 0,2 -2,0 0,-2z M50,8l2,0 0,2 -2,0 0,-2z M52,8l2,0 0,2 -2,0 0,-2z M54,8l2,0 0,2 -2,0 0,-2z M58,8l2,0 0,2 -2,0 0,-2z M2,10l2,0 0,2 -2,0 0,-2z M6,10l2,0 0,2 -2,0 0,-2z M8,10l2,0 0,2 -2,0 0,-2z M10,10l2,0 0,2 -2,0 0,-2z M14,10l2,0 0,2 -2,0 0,-2z M20,10l2,0 0,2 -2,0 0,-2z M24,10l2,0 0,2 -2,0 0,-2z M26,10l2,0 0,2 -2,0 0,-2z M30,10l2,0 0,2 -2,0 0,-2z M34,10l2,0 0,2 -2,0 0,-2z M36,10l2,0 0,2 -2,0 0,-2z M46,10l2,0 0,2 -2,0 0,-2z M50,10l2,0 0,2 -2,0 0,-2z M52,10l2,0 0,2 -2,0 0,-2z M54,10l2,0 0,2 -2,0 0,-2z M58,10l2,0 0,2 -2,0 0,-2z M2,12l2,0 0,2 -2,0 0,-2z M14,12l2,0 0,2 -2,0 0,-2z M18,12l2,0 0,2 -2,0 0,-2z M20,12l2,0 0,2 -2,0 0,-2z M22,12l2,0 0,2 -2,0 0,-2z M28,12l2,0 0,2 -2,0 0,-2z M30,12l2,0 0,2 -2,0 0,-2z M38,12l2,0 0,2 -2,0 0,-2z M42,12l2,0 0,2 -2,0 0,-2z M46,12l2,0 0,2 -2,0 0,-2z M58,12l2,0 0,2 -2,0 0,-2z M2,14l2,0 0,2 -2,0 0,-2z M4,14l2,0 0,2 -2,0 0,-2z M6,14l2,0 0,2 -2,0 0,-2z M8,14l2,0 0,2 -2,0 0,-2z M10,14l2,0 0,2 -2,0 0,-2z M12,14l2,0 0,2 -2,0 0,-2z M14,14l2,0 0,2 -2,0 0,-2z M18,14l2,0 0,2 -2,0 0,-2z M22,14l2,0 0,2 -2,0 0,-2z M26,14l2,0 0,2 -2,0 0,-2z M30,14l2,0 0,2 -2,0 0,-2z M34,14l2,0 0,2 -2,0 0,-2z M38,14l2,0 0,2 -2,0 0,-2z M42,14l2,0 0,2 -2,0 0,-2z M46,14l2,0 0,2 -2,0 0,-2z M48,14l2,0 0,2 -2,0 0,-2z M50,14l2,0 0,2 -2,0 0,-2z M52,14l2,0 0,2 -2,0 0,-2z M54,14l2,0 0,2 -2,0 0,-2z M56,14l2,0 0,2 -2,0 0,-2z M58,14l2,0 0,2 -2,0 0,-2z M22,16l2,0 0,2 -2,0 0,-2z M24,16l2,0 0,2 -2,0 0,-2z M26,16l2,0 0,2 -2,0 0,-2z M30,16l2,0 0,2 -2,0 0,-2z M38,16l2,0 0,2 -2,0 0,-2z M2,18l2,0 0,2 -2,0 0,-2z M6,18l2,0 0,2 -2,0 0,-2z M14,18l2,0 0,2 -2,0 0,-2z M16,18l2,0 0,2 -2,0 0,-2z M20,18l2,0 0,2 -2,0 0,-2z M24,18l2,0 0,2 -2,0 0,-2z M28,18l2,0 0,2 -2,0 0,-2z M30,18l2,0 0,2 -2,0 0,-2z M42,18l2,0 0,2 -2,0 0,-2z M48,18l2,0 0,2 -2,0 0,-2z M54,18l2,0 0,2 -2,0 0,-2z M58,18l2,0 0,2 -2,0 0,-2z M2,20l2,0 0,2 -2,0 0,-2z M8,20l2,0 0,2 -2,0 0,-2z M16,20l2,0 0,2 -2,0 0,-2z M18,20l2,0 0,2 -2,0 0,-2z M24,20l2,0 0,2 -2,0 0,-2z M26,20l2,0 0,2 -2,0 0,-2z M28,20l2,0 0,2 -2,0 0,-2z M32,20l2,0 0,2 -2,0 0,-2z M34,20l2,0 0,2 -2,0 0,-2z M40,20l2,0 0,2 -2,0 0,-2z M42,20l2,0 0,2 -2,0 0,-2z M46,20l2,0 0,2 -2,0 0,-2z M48,20l2,0 0,2 -2,0 0,-2z M56,20l2,0 0,2 -2,0 0,-2z M58,20l2,0 0,2 -2,0 0,-2z M4,22l2,0 0,2 -2,0 0,-2z M10,22l2,0 0,2 -2,0 0,-2z M12,22l2,0 0,2 -2,0 0,-2z M14,22l2,0 0,2 -2,0 0,-2z M22,22l2,0 0,2 -2,0 0,-2z M26,22l2,0 0,2 -2,0 0,-2z M32,22l2,0 0,2 -2,0 0,-2z M38,22l2,0 0,2 -2,0 0,-2z M40,22l2,0 0,2 -2,0 0,-2z M46,22l2,0 0,2 -2,0 0,-2z M48,22l2,0 0,2 -2,0 0,-2z M52,22l2,0 0,2 -2,0 0,-2z M54,22l2,0 0,2 -2,0 0,-2z M58,22l2,0 0,2 -2,0 0,-2z M2,24l2,0 0,2 -2,0 0,-2z M12,24l2,0 0,2 -2,0 0,-2z M24,24l2,0 0,2 -2,0 0,-2z M26,24l2,0 0,2 -2,0 0,-2z M28,24l2,0 0,2 -2,0 0,-2z M34,24l2,0 0,2 -2,0 0,-2z M40,24l2,0 0,2 -2,0 0,-2z M42,24l2,0 0,2 -2,0 0,-2z M44,24l2,0 0,2 -2,0 0,-2z M52,24l2,0 0,2 -2,0 0,-2z M6,26l2,0 0,2 -2,0 0,-2z M12,26l2,0 0,2 -2,0 0,-2z M14,26l2,0 0,2 -2,0 0,-2z M16,26l2,0 0,2 -2,0 0,-2z M20,26l2,0 0,2 -2,0 0,-2z M24,26l2,0 0,2 -2,0 0,-2z M28,26l2,0 0,2 -2,0 0,-2z M32,26l2,0 0,2 -2,0 0,-2z M34,26l2,0 0,2 -2,0 0,-2z M38,26l2,0 0,2 -2,0 0,-2z M40,26l2,0 0,2 -2,0 0,-2z M42,26l2,0 0,2 -2,0 0,-2z M46,26l2,0 0,2 -2,0 0,-2z M58,26l2,0 0,2 -2,0 0,-2z M6,28l2,0 0,2 -2,0 0,-2z M8,28l2,0 0,2 -2,0 0,-2z M12,28l2,0 0,2 -2,0 0,-2z M18,28l2,0 0,2 -2,0 0,-2z M22,28l2,0 0,2 -2,0 0,-2z M26,28l2,0 0,2 -2,0 0,-2z M32,28l2,0 0,2 -2,0 0,-2z M34,28l2,0 0,2 -2,0 0,-2z M36,28l2,0 0,2 -2,0 0,-2z M44,28l2,0 0,2 -2,0 0,-2z M46,28l2,0 0,2 -2,0 0,-2z M48,28l2,0 0,2 -2,0 0,-2z M50,28l2,0 0,2 -2,0 0,-2z M56,28l2,0 0,2 -2,0 0,-2z M2,30l2,0 0,2 -2,0 0,-2z M4,30l2,0 0,2 -2,0 0,-2z M6,30l2,0 0,2 -2,0 0,-2z M8,30l2,0 0,2 -2,0 0,-2z M12,30l2,0 0,2 -2,0 0,-2z M16,30l2,0 0,2 -2,0 0,-2z M18,30l2,0 0,2 -2,0 0,-2z M20,30l2,0 0,2 -2,0 0,-2z M22,30l2,0 0,2 -2,0 0,-2z M24,30l2,0 0,2 -2,0 0,-2z M32,30l2,0 0,2 -2,0 0,-2z M36,30l2,0 0,2 -2,0 0,-2z M40,30l2,0 0,2 -2,0 0,-2z M46,30l2,0 0,2 -2,0 0,-2z M48,30l2,0 0,2 -2,0 0,-2z M52,30l2,0 0,2 -2,0 0,-2z M54,30l2,0 0,2 -2,0 0,-2z M56,30l2,0 0,2 -2,0 0,-2z M58,30l2,0 0,2 -2,0 0,-2z M8,32l2,0 0,2 -2,0 0,-2z M12,32l2,0 0,2 -2,0 0,-2z M14,32l2,0 0,2 -2,0 0,-2z M20,32l2,0 0,2 -2,0 0,-2z M22,32l2,0 0,2 -2,0 0,-2z M28,32l2,0 0,2 -2,0 0,-2z M30,32l2,0 0,2 -2,0 0,-2z M36,32l2,0 0,2 -2,0 0,-2z M38,32l2,0 0,2 -2,0 0,-2z M42,32l2,0 0,2 -2,0 0,-2z M44,32l2,0 0,2 -2,0 0,-2z M48,32l2,0 0,2 -2,0 0,-2z M50,32l2,0 0,2 -2,0 0,-2z M52,32l2,0 0,2 -2,0 0,-2z M54,32l2,0 0,2 -2,0 0,-2z M56,32l2,0 0,2 -2,0 0,-2z M58,32l2,0 0,2 -2,0 0,-2z M2,34l2,0 0,2 -2,0 0,-2z M4,34l2,0 0,2 -2,0 0,-2z M6,34l2,0 0,2 -2,0 0,-2z M10,34l2,0 0,2 -2,0 0,-2z M12,34l2,0 0,2 -2,0 0,-2z M16,34l2,0 0,2 -2,0 0,-2z M22,34l2,0 0,2 -2,0 0,-2z M24,34l2,0 0,2 -2,0 0,-2z M26,34l2,0 0,2 -2,0 0,-2z M28,34l2,0 0,2 -2,0 0,-2z M30,34l2,0 0,2 -2,0 0,-2z M34,34l2,0 0,2 -2,0 0,-2z M42,34l2,0 0,2 -2,0 0,-2z M46,34l2,0 0,2 -2,0 0,-2z M48,34l2,0 0,2 -2,0 0,-2z M58,34l2,0 0,2 -2,0 0,-2z M8,36l2,0 0,2 -2,0 0,-2z M16,36l2,0 0,2 -2,0 0,-2z M18,36l2,0 0,2 -2,0 0,-2z M20,36l2,0 0,2 -2,0 0,-2z M22,36l2,0 0,2 -2,0 0,-2z M26,36l2,0 0,2 -2,0 0,-2z M28,36l2,0 0,2 -2,0 0,-2z M30,36l2,0 0,2 -2,0 0,-2z M32,36l2,0 0,2 -2,0 0,-2z M36,36l2,0 0,2 -2,0 0,-2z M40,36l2,0 0,2 -2,0 0,-2z M46,36l2,0 0,2 -2,0 0,-2z M48,36l2,0 0,2 -2,0 0,-2z M54,36l2,0 0,2 -2,0 0,-2z M56,36l2,0 0,2 -2,0 0,-2z M58,36l2,0 0,2 -2,0 0,-2z M2,38l2,0 0,2 -2,0 0,-2z M4,38l2,0 0,2 -2,0 0,-2z M6,38l2,0 0,2 -2,0 0,-2z M14,38l2,0 0,2 -2,0 0,-2z M22,38l2,0 0,2 -2,0 0,-2z M24,38l2,0 0,2 -2,0 0,-2z M26,38l2,0 0,2 -2,0 0,-2z M32,38l2,0 0,2 -2,0 0,-2z M34,38l2,0 0,2 -2,0 0,-2z M36,38l2,0 0,2 -2,0 0,-2z M38,38l2,0 0,2 -2,0 0,-2z M40,38l2,0 0,2 -2,0 0,-2z M42,38l2,0 0,2 -2,0 0,-2z M44,38l2,0 0,2 -2,0 0,-2z M48,38l2,0 0,2 -2,0 0,-2z M52,38l2,0 0,2 -2,0 0,-2z M58,38l2,0 0,2 -2,0 0,-2z M8,40l2,0 0,2 -2,0 0,-2z M10,40l2,0 0,2 -2,0 0,-2z M12,40l2,0 0,2 -2,0 0,-2z M20,40l2,0 0,2 -2,0 0,-2z M22,40l2,0 0,2 -2,0 0,-2z M28,40l2,0 0,2 -2,0 0,-2z M32,40l2,0 0,2 -2,0 0,-2z M38,40l2,0 0,2 -2,0 0,-2z M42,40l2,0 0,2 -2,0 0,-2z M48,40l2,0 0,2 -2,0 0,-2z M50,40l2,0 0,2 -2,0 0,-2z M2,42l2,0 0,2 -2,0 0,-2z M4,42l2,0 0,2 -2,0 0,-2z M8,42l2,0 0,2 -2,0 0,-2z M12,42l2,0 0,2 -2,0 0,-2z M14,42l2,0 0,2 -2,0 0,-2z M18,42l2,0 0,2 -2,0 0,-2z M20,42l2,0 0,2 -2,0 0,-2z M26,42l2,0 0,2 -2,0 0,-2z M28,42l2,0 0,2 -2,0 0,-2z M32,42l2,0 0,2 -2,0 0,-2z M42,42l2,0 0,2 -2,0 0,-2z M44,42l2,0 0,2 -2,0 0,-2z M46,42l2,0 0,2 -2,0 0,-2z M48,42l2,0 0,2 -2,0 0,-2z M50,42l2,0 0,2 -2,0 0,-2z M52,42l2,0 0,2 -2,0 0,-2z M56,42l2,0 0,2 -2,0 0,-2z M18,44l2,0 0,2 -2,0 0,-2z M22,44l2,0 0,2 -2,0 0,-2z M32,44l2,0 0,2 -2,0 0,-2z M34,44l2,0 0,2 -2,0 0,-2z M36,44l2,0 0,2 -2,0 0,-2z M42,44l2,0 0,2 -2,0 0,-2z M50,44l2,0 0,2 -2,0 0,-2z M52,44l2,0 0,2 -2,0 0,-2z M54,44l2,0 0,2 -2,0 0,-2z M58,44l2,0 0,2 -2,0 0,-2z M2,46l2,0 0,2 -2,0 0,-2z M4,46l2,0 0,2 -2,0 0,-2z M6,46l2,0 0,2 -2,0 0,-2z M8,46l2,0 0,2 -2,0 0,-2z M10,46l2,0 0,2 -2,0 0,-2z M12,46l2,0 0,2 -2,0 0,-2z M14,46l2,0 0,2 -2,0 0,-2z M18,46l2,0 0,2 -2,0 0,-2z M24,46l2,0 0,2 -2,0 0,-2z M26,46l2,0 0,2 -2,0 0,-2z M28,46l2,0 0,2 -2,0 0,-2z M30,46l2,0 0,2 -2,0 0,-2z M32,46l2,0 0,2 -2,0 0,-2z M34,46l2,0 0,2 -2,0 0,-2z M42,46l2,0 0,2 -2,0 0,-2z M46,46l2,0 0,2 -2,0 0,-2z M50,46l2,0 0,2 -2,0 0,-2z M58,46l2,0 0,2 -2,0 0,-2z M2,48l2,0 0,2 -2,0 0,-2z M14,48l2,0 0,2 -2,0 0,-2z M20,48l2,0 0,2 -2,0 0,-2z M26,48l2,0 0,2 -2,0 0,-2z M30,48l2,0 0,2 -2,0 0,-2z M34,48l2,0 0,2 -2,0 0,-2z M38,48l2,0 0,2 -2,0 0,-2z M40,48l2,0 0,2 -2,0 0,-2z M42,48l2,0 0,2 -2,0 0,-2z M50,48l2,0 0,2 -2,0 0,-2z M58,48l2,0 0,2 -2,0 0,-2z M2,50l2,0 0,2 -2,0 0,-2z M6,50l2,0 0,2 -2,0 0,-2z M8,50l2,0 0,2 -2,0 0,-2z M10,50l2,0 0,2 -2,0 0,-2z M14,50l2,0 0,2 -2,0 0,-2z M22,50l2,0 0,2 -2,0 0,-2z M24,50l2,0 0,2 -2,0 0,-2z M26,50l2,0 0,2 -2,0 0,-2z M28,50l2,0 0,2 -2,0 0,-2z M30,50l2,0 0,2 -2,0 0,-2z M34,50l2,0 0,2 -2,0 0,-2z M38,50l2,0 0,2 -2,0 0,-2z M40,50l2,0 0,2 -2,0 0,-2z M42,50l2,0 0,2 -2,0 0,-2z M44,50l2,0 0,2 -2,0 0,-2z M46,50l2,0 0,2 -2,0 0,-2z M48,50l2,0 0,2 -2,0 0,-2z M50,50l2,0 0,2 -2,0 0,-2z M52,50l2,0 0,2 -2,0 0,-2z M58,50l2,0 0,2 -2,0 0,-2z M2,52l2,0 0,2 -2,0 0,-2z M6,52l2,0 0,2 -2,0 0,-2z M8,52l2,0 0,2 -2,0 0,-2z M10,52l2,0 0,2 -2,0 0,-2z M14,52l2,0 0,2 -2,0 0,-2z M20,52l2,0 0,2 -2,0 0,-2z M22,52l2,0 0,2 -2,0 0,-2z M26,52l2,0 0,2 -2,0 0,-2z M30,52l2,0 0,2 -2,0 0,-2z M32,52l2,0 0,2 -2,0 0,-2z M34,52l2,0 0,2 -2,0 0,-2z M36,52l2,0 0,2 -2,0 0,-2z M40,52l2,0 0,2 -2,0 0,-2z M42,52l2,0 0,2 -2,0 0,-2z M44,52l2,0 0,2 -2,0 0,-2z M50,52l2,0 0,2 -2,0 0,-2z M52,52l2,0 0,2 -2,0 0,-2z M54,52l2,0 0,2 -2,0 0,-2z M58,52l2,0 0,2 -2,0 0,-2z M2,54l2,0 0,2 -2,0 0,-2z M6,54l2,0 0,2 -2,0 0,-2z M8,54l2,0 0,2 -2,0 0,-2z M10,54l2,0 0,2 -2,0 0,-2z M14,54l2,0 0,2 -2,0 0,-2z M18,54l2,0 0,2 -2,0 0,-2z M22,54l2,0 0,2 -2,0 0,-2z M24,54l2,0 0,2 -2,0 0,-2z M26,54l2,0 0,2 -2,0 0,-2z M32,54l2,0 0,2 -2,0 0,-2z M40,54l2,0 0,2 -2,0 0,-2z M50,54l2,0 0,2 -2,0 0,-2z M56,54l2,0 0,2 -2,0 0,-2z M58,54l2,0 0,2 -2,0 0,-2z M2,56l2,0 0,2 -2,0 0,-2z M14,56l2,0 0,2 -2,0 0,-2z M20,56l2,0 0,2 -2,0 0,-2z M22,56l2,0 0,2 -2,0 0,-2z M30,56l2,0 0,2 -2,0 0,-2z M34,56l2,0 0,2 -2,0 0,-2z M38,56l2,0 0,2 -2,0 0,-2z M42,56l2,0 0,2 -2,0 0,-2z M46,56l2,0 0,2 -2,0 0,-2z M48,56l2,0 0,2 -2,0 0,-2z M50,56l2,0 0,2 -2,0 0,-2z M52,56l2,0 0,2 -2,0 0,-2z M2,58l2,0 0,2 -2,0 0,-2z M4,58l2,0 0,2 -2,0 0,-2z M6,58l2,0 0,2 -2,0 0,-2z M8,58l2,0 0,2 -2,0 0,-2z M10,58l2,0 0,2 -2,0 0,-2z M12,58l2,0 0,2 -2,0 0,-2z M14,58l2,0 0,2 -2,0 0,-2z M18,58l2,0 0,2 -2,0 0,-2z M20,58l2,0 0,2 -2,0 0,-2z M24,58l2,0 0,2 -2,0 0,-2z M34,58l2,0 0,2 -2,0 0,-2z M42,58l2,0 0,2 -2,0 0,-2z M46,58l2,0 0,2 -2,0 0,-2z M52,58l2,0 0,2 -2,0 0,-2z M58,58l2,0 0,2 -2,0 0,-2z " stroke="transparent" fill="black"/>
+        </svg>
+      </div>
+      <div class="qr-info">
+        <div class="qr-label">📱 Open on Mobile</div>
+        <div class="qr-desc">Scan this QR code with your phone camera to test live with rear camera:</div>
+        <a id="app-link" class="qr-link" href="https://ondrejhykl.github.io/mlr-ex08/" target="_blank" rel="noopener noreferrer">
+          https://ondrejhykl.github.io/mlr-ex08/
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Hidden canvas for preprocessing 96x96 -->
+  <canvas id="offscreen-canvas" width="96" height="96"></canvas>
+
+  <script>
+    // Application State & Configuration
+    const CONFIG = {
+      modelUrl: 'leaf_model.onnx',
+      infoUrl: 'model_info.json',
+      expectedUrl: 'check_expected.json',
+      checkImageUrl: 'check_image.jpg',
+      targetPublicUrl: 'https://ondrejhykl.github.io/mlr-ex08/',
+      classes: ['apple', 'cherry', 'chestnut', 'maple'],
+      inputSize: 96,
+      mean: [0.485, 0.456, 0.406],
+      std: [0.229, 0.224, 0.225],
+      icons: {
+        apple: '🍎',
+        cherry: '🍒',
+        chestnut: '🌰',
+        maple: '🍁'
+      }
+    };
+
+    let session = null;
+    let cameraStream = null;
+    let isProcessing = false;
+    let currentFacingMode = 'environment';
+    let availableVideoDevices = [];
+    let fpsCounter = 0;
+    let lastFpsTime = performance.now();
+    let currentFps = 0;
+    let animationFrameId = null;
+
+    // DOM Elements
+    const video = document.getElementById('video');
+    const imagePreview = document.getElementById('image-preview');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const statsBadge = document.getElementById('stats-badge');
+    const btnCamera = document.getElementById('btn-camera');
+    const btnCameraIcon = document.getElementById('btn-camera-icon');
+    const btnCameraText = document.getElementById('btn-camera-text');
+    const btnFlip = document.getElementById('btn-flip');
+    const fileInput = document.getElementById('file-input');
+    const classList = document.getElementById('class-list');
+    const topPredName = document.getElementById('top-prediction-name');
+    const btnVerify = document.getElementById('btn-verify');
+    const verifyOutput = document.getElementById('verify-output');
+    const qrcodeContainer = document.getElementById('qrcode');
+    const offscreenCanvas = document.getElementById('offscreen-canvas');
+    const offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+
+    // Initialize UI rows for classes
+    function initClassList() {
+      classList.innerHTML = '';
+      CONFIG.classes.forEach(cls => {
+        const row = document.createElement('div');
+        row.className = 'pred-row';
+        row.id = `row-${cls}`;
+        row.innerHTML = `
+          <div class="pred-header">
+            <span class="pred-name">
+              <span>${CONFIG.icons[cls] || '🍃'}</span>
+              <span>${cls}</span>
+              <span class="pred-badge">TOP MATCH</span>
+            </span>
+            <span class="pred-pct" id="pct-${cls}">0.0%</span>
+          </div>
+          <div class="pred-bar-bg">
+            <div class="pred-bar-fill" id="bar-${cls}"></div>
+          </div>
+        `;
+        classList.appendChild(row);
+      });
+    }
+
+    // Set UI Status
+    function setStatus(text, isActive = false) {
+      statusText.textContent = text;
+      if (isActive) {
+        statusDot.classList.add('active');
+      } else {
+        statusDot.classList.remove('active');
+      }
+    }
+
+    // In-browser QR code generation
+    function renderQRCode() {
+      try {
+        if (typeof qrcode !== 'undefined') {
+          // Use qrcode-generator library
+          const qr = qrcode(0, 'M');
+          qr.addData(CONFIG.targetPublicUrl);
+          qr.make();
+          // Generate SVG tag with scalable vector attributes
+          qrcodeContainer.innerHTML = qr.createSvgTag({ scalable: true, margin: 2 });
+          console.log('In-browser QR code generated successfully for:', CONFIG.targetPublicUrl);
+        }
+      } catch (err) {
+        console.warn('Dynamic QR generation fallback to embedded SVG:', err);
+      }
+    }
+
+    // Load model info from model_info.json
+    async function loadModelInfo() {
+      try {
+        const resp = await fetch(CONFIG.infoUrl);
+        if (resp.ok) {
+          const info = await resp.json();
+          if (info.classes) CONFIG.classes = info.classes;
+          if (info.input_size) {
+            CONFIG.inputSize = info.input_size;
+            offscreenCanvas.width = info.input_size;
+            offscreenCanvas.height = info.input_size;
+          }
+          if (info.mean) CONFIG.mean = info.mean;
+          if (info.std) CONFIG.std = info.std;
+          console.log('Loaded model_info.json:', info);
+        }
+      } catch (e) {
+        console.warn('Could not load model_info.json, using defaults:', e);
+      }
+      initClassList();
+    }
+
+    // Initialize ONNX Runtime Session
+    async function initModel() {
+      try {
+        setStatus('Loading ONNX model...');
+        // Configure ONNX Runtime for Safari on iPhone & web compatibility
+        // Single thread is crucial for Safari without SharedArrayBuffer / COOP headers
+        if (window.ort) {
+          ort.env.wasm.numThreads = 1;
+          ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/';
+        }
+        
+        session = await ort.InferenceSession.create(CONFIG.modelUrl, {
+          executionProviders: ['wasm']
+        });
+
+        console.log('Session loaded successfully!');
+        console.log('Input names:', session.inputNames);
+        console.log('Output names:', session.outputNames);
+        setStatus('Model ready', false);
+
+        // Check if cameras are available
+        checkCameras();
+      } catch (err) {
+        console.error('Error loading model:', err);
+        setStatus('Model failed to load');
+      }
+    }
+
+    // Preprocessing as specified by model_info.json:
+    // 1. Crop central square of source (video frame or image)
+    // 2. Resize to input size (96x96)
+    // 3. Scale RGB pixels to 0-1
+    // 4. Standardize each channel with mean/std
+    // 5. Shape 1x3x96x96 (NCHW planar format)
+    function preprocess(sourceElement) {
+      const sw = sourceElement.videoWidth || sourceElement.naturalWidth || sourceElement.width;
+      const sh = sourceElement.videoHeight || sourceElement.naturalHeight || sourceElement.height;
+      if (!sw || !sh) return null;
+
+      const size = CONFIG.inputSize;
+      const minDim = Math.min(sw, sh);
+      const sx = (sw - minDim) / 2;
+      const sy = (sh - minDim) / 2;
+
+      // Draw cropped central square and resize to 96x96
+      offscreenCtx.drawImage(sourceElement, sx, sy, minDim, minDim, 0, 0, size, size);
+
+      const imgData = offscreenCtx.getImageData(0, 0, size, size);
+      const rgba = imgData.data;
+
+      const numPixels = size * size;
+      const floatData = new Float32Array(3 * numPixels);
+      const [meanR, meanG, meanB] = CONFIG.mean;
+      const [stdR, stdG, stdB] = CONFIG.std;
+
+      for (let i = 0; i < numPixels; i++) {
+        const r = rgba[i * 4 + 0] / 255.0;
+        const g = rgba[i * 4 + 1] / 255.0;
+        const b = rgba[i * 4 + 2] / 255.0;
+
+        floatData[0 * numPixels + i] = (r - meanR) / stdR;
+        floatData[1 * numPixels + i] = (g - meanG) / stdG;
+        floatData[2 * numPixels + i] = (b - meanB) / stdB;
+      }
+
+      const inputName = session.inputNames[0];
+      const tensor = new ort.Tensor('float32', floatData, [1, 3, size, size]);
+      const feeds = {};
+      feeds[inputName] = tensor;
+      return feeds;
+    }
+
+    // Softmax helper for logits -> probabilities
+    function softmax(logits) {
+      const arr = Array.from(logits);
+      const maxVal = Math.max(...arr);
+      const exps = arr.map(x => Math.exp(x - maxVal));
+      const sumExp = exps.reduce((a, b) => a + b, 0);
+      return exps.map(x => x / sumExp);
+    }
+
+    // Update UI with class probabilities
+    function updateProbabilities(probs, latencyMs) {
+      let topIdx = 0;
+      let topProb = -1;
+
+      probs.forEach((p, idx) => {
+        if (p > topProb) {
+          topProb = p;
+          topIdx = idx;
+        }
+      });
+
+      CONFIG.classes.forEach((cls, idx) => {
+        const p = probs[idx];
+        const row = document.getElementById(`row-${cls}`);
+        const pctEl = document.getElementById(`pct-${cls}`);
+        const barEl = document.getElementById(`bar-${cls}`);
+
+        if (row && pctEl && barEl) {
+          let pctText = (p * 100).toFixed(1) + '%';
+          if (p < 0.001) pctText = (p * 100).toFixed(3) + '%';
+          if (p < 0.00001) pctText = (p * 100).toExponential(2) + '%';
+
+          pctEl.textContent = pctText;
+          barEl.style.width = Math.min(100, Math.max(0, p * 100)) + '%';
+
+          if (idx === topIdx && p > 0.3) {
+            row.classList.add('top-match');
+          } else {
+            row.classList.remove('top-match');
+          }
+        }
+      });
+
+      const topClass = CONFIG.classes[topIdx];
+      topPredName.textContent = `Top: ${CONFIG.icons[topClass] || ''} ${topClass} (${(topProb * 100).toFixed(1)}%)`;
+
+      // Update FPS & latency stats
+      fpsCounter++;
+      const now = performance.now();
+      if (now - lastFpsTime >= 1000) {
+        currentFps = Math.round((fpsCounter * 1000) / (now - lastFpsTime));
+        fpsCounter = 0;
+        lastFpsTime = now;
+      }
+      statsBadge.textContent = `${latencyMs.toFixed(0)} ms | ${currentFps} FPS`;
+    }
+
+    // Single Inference on Given Element (video or img)
+    async function runInferenceOn(element) {
+      if (!session) return;
+      const feeds = preprocess(element);
+      if (!feeds) return;
+
+      const t0 = performance.now();
+      const results = await session.run(feeds);
+      const latency = performance.now() - t0;
+
+      const outputName = session.outputNames[0];
+      const outputTensor = results[outputName];
+      const probs = softmax(outputTensor.data);
+
+      updateProbabilities(probs, latency);
+      return probs;
+    }
+
+    // Continuous video frame processing loop
+    async function processVideoFrame() {
+      if (!cameraStream || video.paused || video.ended) {
+        return;
+      }
+
+      if (!isProcessing && video.readyState >= 2 && video.videoWidth > 0) {
+        isProcessing = true;
+        try {
+          await runInferenceOn(video);
+        } catch (err) {
+          console.error('Frame inference error:', err);
+        } finally {
+          isProcessing = false;
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(processVideoFrame);
+    }
+
+    // Check available cameras
+    async function checkCameras() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        availableVideoDevices = devices.filter(d => d.kind === 'videoinput');
+        if (availableVideoDevices.length > 1) {
+          btnFlip.style.display = 'flex';
+        }
+      } catch (e) {
+        console.warn('enumerateDevices error:', e);
+      }
+    }
+
+    // Start rear/environment camera
+    async function startCamera(facing = currentFacingMode) {
+      stopCamera();
+      imagePreview.style.display = 'none';
+      video.style.display = 'block';
+
+      setStatus('Accessing camera...');
+
+      // iOS Safari and modern mobile browsers constraints
+      const constraints = {
+        video: {
+          facingMode: { ideal: facing },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      };
+
+      try {
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (firstErr) {
+          console.warn('Ideal facingMode constraint failed, trying basic video:', firstErr);
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+
+        cameraStream = stream;
+        video.srcObject = stream;
+        currentFacingMode = facing;
+
+        // Mirror video only for front/user camera
+        if (facing === 'user') {
+          video.classList.add('mirrored');
+        } else {
+          video.classList.remove('mirrored');
+        }
+
+        // Must call play() for iOS Safari
+        await video.play();
+
+        setStatus('Live (rear camera)', true);
+        btnCameraText.textContent = 'Stop Camera';
+        btnCameraIcon.textContent = '⏹️';
+
+        await checkCameras();
+
+        // Start processing loop
+        isProcessing = false;
+        fpsCounter = 0;
+        lastFpsTime = performance.now();
+        animationFrameId = requestAnimationFrame(processVideoFrame);
+      } catch (err) {
+        console.warn('Camera access error:', err);
+        setStatus('Camera unavailable (use photo upload)');
+      }
+    }
+
+    // Stop Camera
+    function stopCamera() {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
+      }
+      video.srcObject = null;
+      setStatus('Camera stopped', false);
+      btnCameraText.textContent = 'Start Camera';
+      btnCameraIcon.textContent = '📷';
+      statsBadge.textContent = '-- ms | -- FPS';
+    }
+
+    // Toggle Camera on/off
+    btnCamera.addEventListener('click', () => {
+      if (cameraStream) {
+        stopCamera();
+      } else {
+        startCamera(currentFacingMode);
+      }
+    });
+
+    // Flip camera (rear <-> front)
+    btnFlip.addEventListener('click', () => {
+      currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
+      startCamera(currentFacingMode);
+    });
+
+    // Photo Upload Fallback
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      stopCamera();
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        imagePreview.onload = async () => {
+          imagePreview.style.display = 'block';
+          video.style.display = 'none';
+          setStatus('Classifying uploaded photo...', true);
+          try {
+            await runInferenceOn(imagePreview);
+            setStatus('Photo classified', false);
+          } catch (err) {
+            console.error('Inference on uploaded image failed:', err);
+            setStatus('Classification error');
+          }
+        };
+        imagePreview.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Check verification with check_image.jpg and check_expected.json
+    btnVerify.addEventListener('click', async () => {
+      verifyOutput.innerHTML = 'Running verification test on check_image.jpg...';
+      try {
+        // Fetch expected
+        const expResp = await fetch(CONFIG.expectedUrl);
+        if (!expResp.ok) throw new Error('Could not fetch ' + CONFIG.expectedUrl);
+        const expected = await expResp.json();
+
+        // Load check image
+        const img = new Image();
+        img.src = CONFIG.checkImageUrl + '?t=' + Date.now();
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = () => reject(new Error('Could not load ' + CONFIG.checkImageUrl));
+        });
+
+        // Stop camera and show check image
+        stopCamera();
+        imagePreview.src = img.src;
+        imagePreview.style.display = 'block';
+        video.style.display = 'none';
+
+        // Run inference
+        const probs = await runInferenceOn(img);
+        if (!probs) throw new Error('Inference returned no results');
+
+        let diffMax = 0;
+        let html = '<table style="width:100%; border-collapse:collapse; margin-top:4px;">';
+        html += '<tr style="border-bottom:1px solid #2e593c; text-align:left;"><th>Class</th><th>Predicted</th><th>Expected</th><th>Diff</th></tr>';
+
+        CONFIG.classes.forEach((cls, idx) => {
+          const got = probs[idx];
+          const exp = expected[cls] !== undefined ? expected[cls] : 0;
+          const diff = Math.abs(got - exp);
+          if (diff > diffMax) diffMax = diff;
+
+          const gotStr = got.toExponential(4);
+          const expStr = exp.toExponential(4);
+          const diffStr = diff.toExponential(2);
+
+          html += `<tr><td>${cls}</td><td>${gotStr}</td><td>${expStr}</td><td style="color:#a5d6a7;">${diffStr}</td></tr>`;
+        });
+        html += '</table>';
+
+        const isPass = diffMax < 1e-4;
+        const statusHtml = isPass
+          ? `<span class="verify-pass">✓ PASSED</span> (Max diff: ${diffMax.toExponential(3)})`
+          : `<span style="color:#ff5252;">FAILED</span> (Max diff: ${diffMax.toExponential(3)})`;
+
+        verifyOutput.innerHTML = `<div><strong>Verification Result:</strong> ${statusHtml}</div>${html}`;
+      } catch (err) {
+        verifyOutput.innerHTML = `<span style="color:#ff5252;">Error: ${err.message}</span>`;
+      }
+    });
+
+    // Auto-initialize on load
+    window.addEventListener('DOMContentLoaded', async () => {
+      renderQRCode();
+      await loadModelInfo();
+      await initModel();
+
+      // Attempt to auto-start camera (if browser allows autoplay)
+      try {
+        await startCamera('environment');
+      } catch (e) {
+        console.log('Autoplay camera was restricted, waiting for user tap:', e);
+      }
+    });
+  </script>
+</body>
+</html>
