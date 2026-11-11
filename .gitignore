@@ -1,0 +1,41 @@
+# Byte-compiled / optimized / Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# Datasets (large image archives & extracted dataset folders)
+ex08_leaves_images/
+ex08_leaves_images.zip
+*.zip
+*.tar
+*.tar.gz
+data/
+task4/data/
+task4/dataset/
+
+# Model checkpoints & heavy weights
+*.pt
+*.pth
+*.ckpt
+*.bin
+task4/checkpoints/*
+!task4/checkpoints/.gitkeep
+
+# Ensure deployed GitHub Pages ONNX model is tracked
+!leaf_model.onnx
+
+# OS generated files
+.DS_Store
+Thumbs.db
