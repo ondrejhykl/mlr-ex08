@@ -1,0 +1,26 @@
+{
+  "architecture": "MobileNetV3-Small (Optimized)",
+  "experiment": "Improved_MobileNetV3",
+  "seed": 123,
+  "classes": [
+    "apple",
+    "cherry",
+    "chestnut",
+    "maple"
+  ],
+  "input_size": 96,
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "val_accuracy": 0.925,
+  "camera_val_accuracy": 0.9167,
+  "training_time_s": 151.09,
+  "notes": "Fine-tuned MobileNetV3-Small with ColorJitter, CosineAnnealingLR (25 ep), AdamW (weight decay 0.01), and Label Smoothing (0.1). Trained on expanded 868-image dataset."
+}

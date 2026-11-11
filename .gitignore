@@ -25,6 +25,7 @@ leafs_data_group2/
 data/
 task4/data/
 task4/dataset/
+task4/camera_val/
 
 # Model checkpoints & heavy weights
 *.pt
